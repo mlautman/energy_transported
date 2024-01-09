@@ -28,8 +28,13 @@ CRGB leds[NUM_LEDS];
 #define BOTH_NO_CON 3
 #define BOTH_CON 4
 
-
 #define DEBUG 1
+
+
+const double loop_period = 0.010; // Interval of 10 seconds
+const double max_loop_period = loop_period + 0.010; // Tolerance for timing, e.g., milliseconds
+const double loop_frequency = 1.0 / (loop_period);
+
 
 String touchToString(int touchType) {
     switch (touchType) {
@@ -123,7 +128,7 @@ uint16_t connectionState()
   return inputState;
 }
 
-uint16_t touchState()
+uint16_t getTouchState()
 {
   uint16_t T0_val = touchRead(TOUCH_PIN_0);
   uint16_t T3_val = touchRead(TOUCH_PIN_3);
@@ -156,12 +161,8 @@ uint16_t touchState()
 }
 
 unsigned long previousMillis = 0;
-const long interval = 10; // Interval of 100 milliseconds
-const long maxInterval = 10; // Tolerance for timing, e.g., 25 milliseconds
-
-
 void maintainTiming(){
-  while (millis() - previousMillis < interval) {
+  while (millis() - previousMillis < (long)(loop_period*1000)) {
     // Wait until the interval has passed
   }
   previousMillis = millis();
@@ -169,7 +170,7 @@ void maintainTiming(){
 
 void checkTimingViolation() {
   unsigned long currentMillis = millis();
-  if (currentMillis - previousMillis > maxInterval) {
+  if (currentMillis - previousMillis > (long)(max_loop_period*1000)) {
     #ifdef DEBUG
     Serial.println("Timing violation: Loop running too slow!");
     #endif
@@ -177,7 +178,7 @@ void checkTimingViolation() {
 }
 
 typedef void (*SimplePatternList[])();
-SimplePatternList gPatterns = {confetti, leftTwinkle,  rightTwinkle,  bothTwinkle, juggle};
+SimplePatternList gPatterns = {noAnimation, leftTwinkle,  rightTwinkle,  bothTwinkle, juggle};
 uint8_t gHue = 0; // rotating "base color" used by many of the patterns
 uint8_t gCurrentPatternNumber = 0; // Index number of which pattern is current
 
@@ -195,22 +196,28 @@ void showAnimation(){
 //  FastLED.delay(1000/FRAMES_PER_SECOND); 
 }
 
+uint16_t previousTouchState = 0;
+
 void loop() {
   maintainTiming(); 
-  uint16_t touchStatus = touchState();
-
-  setAnimation(touchStatus);
+  uint16_t touchState = getTouchState();
+  if (previousTouchState != touchState)
+  {
+    FastLED.clear(); 
+  }
+  setAnimation(touchState);
   showAnimation();
 
   // do some periodic updates
   //  TODO: how does this work?
-//  EVERY_N_MILLISECONDS( 20 ) { gHue++; } // slowly cycle the "base color" through the rainbow
+  EVERY_N_MILLISECONDS( 20 ) { gHue++; } // slowly cycle the "base color" through the rainbow
 
   #ifdef DEBUG
-  String touchString = touchToString(touchStatus);
+  String touchString = touchToString(touchState);
   Serial.println(touchString);
   #endif
   checkTimingViolation();
+  previousTouchState = touchState;
 }
 
 
@@ -232,14 +239,6 @@ void addGlitter( fract8 chanceOfGlitter)
   if( random8() < chanceOfGlitter) {
     leds[ random16(NUM_LEDS) ] += CRGB::White;
   }
-}
-
-void confetti() 
-{
-  // random colored speckles that blink in and fade smoothly
-  fadeToBlackBy( leds, NUM_LEDS, 10);
-  int pos = random16(NUM_LEDS);
-  leds[pos] += CHSV( gHue + random8(64), 200, 255);
 }
 
 void sinelon()
@@ -272,24 +271,21 @@ void juggle() {
 }
 
 #define LEFT_START 5
-#define RIGHT_START 40
-#define TWINKLE_RANGE 15
+#define RIGHT_START 100
+#define TWINKLE_RANGE 25
 
 void bothTwinkle() 
 {
-  FastLED.clear(); 
   applyTwinkleEffect(LEFT_START, TWINKLE_RANGE);
   applyTwinkleEffect(RIGHT_START, -TWINKLE_RANGE); // Negative k for reverse effect
 }
 
 void leftTwinkle()
 {
-  FastLED.clear(); 
   applyTwinkleEffect(LEFT_START, TWINKLE_RANGE);
 }
 void rightTwinkle()
 {
-  FastLED.clear(); 
   applyTwinkleEffect(RIGHT_START, -TWINKLE_RANGE); // Negative k for reverse effect  
 }
 
@@ -300,20 +296,40 @@ CRGB getVariedWhiteColor() {
   byte blue = 255;
 
   // Randomize a bit for variation
-  red -= random8(0, 20);   // Subtract up to 20 from 255
-  green -= random8(0, 20); 
-  blue -= random8(0, 20);
+  red -= random8(0, 100);   // Subtract up to 20 from 255
+  green -= random8(0, 100); 
+  blue -= random8(0, 100);
 
   return CRGB(red, green, blue);
 }
 
+void noAnimation()
+{
+  fadeToBlackBy(leds, NUM_LEDS, 20);
+//  FastLED.clear(); 
+}
+
+void confetti() 
+{
+  // random colored speckles that blink in and fade smoothly
+  fadeToBlackBy( leds, NUM_LEDS, 10);
+  int pos = random16(NUM_LEDS);
+  leds[pos] += getVariedWhiteColor(); 
+//  CHSV( gHue + random8(64), 200, 255);
+  
+}
+
 void applyTwinkleEffect(int startLed, int range) {
-  for (int i = 0; i <= abs(range); i++) {
-    int ledIndex = startLed + i * (range > 0 ? 1 : -1);
-    if (ledIndex >= 0 && ledIndex < NUM_LEDS) {
-      float brightness = 255 * (1 - (float)i / abs(range));
-      leds[ledIndex] = getVariedWhiteColor();
-      leds[ledIndex].fadeToBlackBy(255 - (int)brightness);
-    }
+  // always slowly fade
+  fadeToBlackBy( leds, NUM_LEDS, 10);  
+  
+  // randomly keep twinkles per sec reasonable  
+  double twinkles_per_sec = 20;
+  int loops_per_twinkle = loop_frequency / twinkles_per_sec;
+  
+  if (loops_per_twinkle < 1 || random16(loops_per_twinkle) == 1){
+    int pos = random16(abs(range));
+    int ledIndex = startLed + pos * (range > 0 ? 1 : -1);    
+    leds[ledIndex] = getVariedWhiteColor();
   }
 }
