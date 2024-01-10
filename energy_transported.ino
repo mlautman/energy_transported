@@ -21,7 +21,6 @@ CRGB leds[NUM_LEDS];
 #define BRIGHTNESS          96
 #define FRAMES_PER_SECOND  120
 
-
 #define NO_TOUCH 0
 #define LEFT_ONLY 1
 #define RIGHT_ONLY 2
@@ -75,7 +74,7 @@ void setupTouch() {
 }
 
 void setup() {
-  delay(3000); // 3 second delay for recovery
+  delay(1000); // 1 second delay for recovery
   setupLED();
 
   //Setup touch sensing
@@ -137,6 +136,7 @@ uint16_t connectionState()
 
   return inputState;
 }
+
 const uint16_t history_len = 3;
 uint16_t output_history[history_len] = {0}; // Correct array declaration
 uint16_t current_state = 0;
@@ -380,11 +380,13 @@ void applyTwinkleEffect(int startLed, int range) {
 
   // randomly keep twinkles per sec reasonable
   double twinkles_per_sec = 30;
+  int loops_per_twinkle = loop_frequency / twinkles_per_sec;
+  #ifdef DEBUG
   Serial.print("loop_frequency:\t");
   Serial.println(loop_frequency);
-  int loops_per_twinkle = loop_frequency / twinkles_per_sec;
   Serial.print("loops_per_twinkle:\t");
   Serial.println(loops_per_twinkle);
+  #endif
 
   if ( loops_per_twinkle < 1 || random16(loops_per_twinkle) == 0) {
     int pos = random16(abs(range));
