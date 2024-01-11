@@ -3,7 +3,7 @@
 #include <FastLED.h>
 #include <Arduino.h>
 
-#include "./TouchState.hpp"
+#include "./touchState.hpp"
 #include "./util.hpp"
 FASTLED_USING_NAMESPACE
 
